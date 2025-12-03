@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { GoogleGenerativeAI } from "@google/generative-ai"; 
 import { 
   Loader2, Bot, User, Clock, CheckCircle, PauseCircle, 
   Trash2, LogOut, Lock, Play, ArrowLeft, Wrench, LogIn, 
@@ -57,7 +58,7 @@ const checkAndFillSlots = async () => {
   }
 };
 
-// --- KOMPONEN HALAMAN USER ---
+// --- KOMPONEN HALAMAN USER (Updated Logic Validasi) ---
 
 function UserPage({ onNavigate }) {
   const [name, setName] = useState('');
@@ -95,6 +96,14 @@ function UserPage({ onNavigate }) {
     if (data) setQueue(data);
   };
 
+  // --- LOGIKA VALIDASI MANUAL (FALLBACK JIKA AI ERROR) ---
+  const manualValidation = (text) => {
+    const keywords = ['motor', 'rem', 'ban', 'oli', 'mesin', 'servis', 'lampu', 'busi', 'aki', 'karbu', 'cvt', 'kampas', 'rantai', 'bensin', 'starter', 'gas', 'spion', 'plat', 'body', 'jok', 'rusak', 'mogok', 'bunyi'];
+    const lowerText = text.toLowerCase();
+    const hasKeyword = keywords.some(word => lowerText.includes(word));
+    return hasKeyword;
+  };
+
   const handleJoinQueue = async (e) => {
     e.preventDefault();
     if (!supabase) return;
@@ -110,44 +119,65 @@ function UserPage({ onNavigate }) {
       
       const nextNumber = (count || 0) + 1;
 
-      // AI Analysis
+      // Variabel hasil validasi
       let aiSummary = "Menunggu Analisa";
       let estMins = 30;
-      let isValid = true;
+      let isValid = false; // Default FALSE agar lebih ketat
 
+      // 1. COBA VALIDASI DENGAN AI GEMINI
       if (GEMINI_API_KEY && GEMINI_API_KEY.length > 10) {
         try {
-          const prompt = `Role: Admin Bengkel. Keluhan: "${issue}". Validasi: Masalah motor? JSON output only: {"valid": boolean, "summary": "Singkat max 5 kata", "mins": number (estimasi menit)}`;
+          const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+          // Gunakan model 1.5-flash yang lebih stabil
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
           
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            }
-          );
-
-          if (!response.ok) throw new Error(`Gemini API Error: ${response.statusText}`);
-
-          const data = await response.json();
-          const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.replace(/```json|```/g, '').trim() || "{}";
+          const prompt = `
+            Peran: Kamu adalah Kepala Mekanik Bengkel Motor yang Tegas.
+            Analisa keluhan: "${issue}".
+            
+            Tugas:
+            1. Validasi: Apakah ini masalah teknis motor? (Isi chat, sapaan 'p', makanan, curhat -> TOLAK).
+            2. Output:
+               - Jika VALID: Berikan diagnosis teknis singkat (contoh: "Ganti kampas rem", "Servis CVT").
+               - Jika TIDAK VALID: Berikan alasan penolakan yang jelas (contoh: "Maaf, input tidak terdeteksi sebagai kerusakan motor").
+            
+            Format JSON Wajib: 
+            {"valid": boolean, "summary": "string", "mins": number}
+          `;
+          
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          const text = response.text().replace(/```json|```/g, '').trim();
           const aiData = JSON.parse(text);
-          
+             
           if (aiData) {
-            isValid = aiData.valid !== undefined ? aiData.valid : true;
-            aiSummary = aiData.summary || aiSummary;
-            estMins = aiData.mins || estMins;
+            isValid = aiData.valid;
+            aiSummary = aiData.summary;
+            estMins = aiData.mins || 30;
           }
         } catch (aiError) {
-          console.warn("AI Error, using defaults", aiError);
+          console.warn("AI Error/Limit (Switching to Manual):", aiError);
+          // 2. JIKA AI ERROR (MISAL API KEY MATI), GUNAKAN VALIDASI MANUAL
+          const isManualValid = manualValidation(issue);
+          if (isManualValid) {
+            isValid = true;
+            aiSummary = "Analisa AI Terkendala (Validasi Manual OK)";
+          } else {
+            isValid = false;
+            aiSummary = "Sistem gagal memverifikasi kerusakan. Gunakan kata kunci teknis (rem, mesin, oli).";
+          }
         }
+      } else {
+        // Jika tidak ada API Key, pakai manual
+        isValid = manualValidation(issue);
+        aiSummary = isValid ? "Validasi Manual" : "Input tidak jelas (Gunakan kata kunci motor)";
       }
 
+      // 3. EKSEKUSI PENOLAKAN / PENERIMAAN
       if (!isValid) {
-        alert(`Maaf, sistem mendeteksi ini bukan keluhan teknis motor: ${aiSummary}`);
+        alert(`❌ Antrian Ditolak!\n\nAlasan: ${aiSummary || "Input tidak relevan dengan bengkel motor."}\n\nSilakan jelaskan kerusakan motor Anda dengan lebih spesifik.`);
         setLoading(false); 
-        return;
+        return; // STOP DISINI
       }
 
       const { error } = await supabase.from('Antrian').insert([{
@@ -163,13 +193,13 @@ function UserPage({ onNavigate }) {
       
       setName(''); 
       setIssue('');
-      alert(`Berhasil! Nomor Antrian: A-${String(nextNumber).padStart(3, '0')}`);
+      alert(`✅ Berhasil! Nomor Antrian: A-${String(nextNumber).padStart(3, '0')}\nDiagnosa: ${aiSummary}`);
       
       setTimeout(checkAndFillSlots, 500);
 
     } catch (error) { 
       console.error(error); 
-      alert("Gagal memproses antrian. Cek konsol atau koneksi."); 
+      alert("Gagal memproses antrian. Cek koneksi internet."); 
     } finally { 
       setLoading(false); 
     }
@@ -180,7 +210,7 @@ function UserPage({ onNavigate }) {
       <div className="max-w-6xl mx-auto mb-8 flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-slate-700 pb-6">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3 text-cyan-400">
-            <Bot size={32} /> System Antrian AI
+            <Bot size={32} /> System Antrian berbasis AI
           </h1>
           <p className="text-slate-500 text-sm mt-1">Selamat Datang, Silahkan Ambil Nomor.</p>
         </div>
@@ -193,30 +223,25 @@ function UserPage({ onNavigate }) {
       </div>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-10">
+    
         <div className="lg:col-span-1">
           <div className="bg-slate-800 p-6 rounded-xl shadow-lg border border-slate-700 sticky top-6">
             <h2 className="text-xl font-bold mb-4 text-emerald-400">Ambil Nomor</h2>
             <form onSubmit={handleJoinQueue} className="space-y-4">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Nama Pelanggan</label>
-                <input 
-                  type="text" 
-                  value={name} 
-                  onChange={e => setName(e.target.value)} 
-                  className="w-full bg-slate-900 border border-slate-600 rounded p-2 focus:border-emerald-500 outline-none text-white" 
-                  placeholder="Contoh: Budi Santoso" 
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">Keluhan / Kerusakan</label>
-                <textarea 
-                  value={issue} 
-                  onChange={e => setIssue(e.target.value)} 
-                  className="w-full bg-slate-900 border border-slate-600 rounded p-2 focus:border-emerald-500 outline-none h-32 text-white" 
-                  placeholder="Contoh: Rem depan bunyi berdecit..." 
-                />
-              </div>
-              <button disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded flex justify-center items-center gap-2 transition-colors">
+              <input 
+                type="text" 
+                value={name} 
+                onChange={e => setName(e.target.value)} 
+                className="w-full bg-slate-900 border border-slate-600 rounded p-2 focus:border-emerald-500 outline-none text-white" 
+                placeholder="Nama Kamu" 
+              />
+              <textarea 
+                value={issue} 
+                onChange={e => setIssue(e.target.value)} 
+                className="w-full bg-slate-900 border border-slate-600 rounded p-2 focus:border-emerald-500 outline-none h-32 text-white" 
+                placeholder="Keluhan Motor (Contoh: Rem bunyi, Ganti Oli)..." 
+              />
+              <button disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded flex justify-center items-center gap-2">
                 {loading ? <Loader2 className="animate-spin" /> : 'Ambil Antrian'}
               </button>
             </form>
@@ -224,9 +249,10 @@ function UserPage({ onNavigate }) {
         </div>
 
         <div className="lg:col-span-2">
+    
           <div className="grid grid-cols-2 gap-4 mb-6">
              {[1, 2].map(num => (
-               <div key={num} className={`p-3 rounded border flex items-center gap-3 transition-colors ${activeMechanics >= num ? 'bg-blue-900/20 border-blue-500' : 'bg-slate-800 border-slate-700 opacity-50'}`}>
+               <div key={num} className={`p-3 rounded border flex items-center gap-3 ${activeMechanics >= num ? 'bg-blue-900/20 border-blue-500' : 'bg-slate-800 border-slate-700 opacity-50'}`}>
                  <Wrench size={20} className={activeMechanics >= num ? "text-blue-400" : "text-slate-500"} />
                  <span className="text-sm font-bold">{activeMechanics >= num ? `Mekanik ${num} Sibuk` : `Mekanik ${num} Ready`}</span>
                </div>
@@ -234,28 +260,26 @@ function UserPage({ onNavigate }) {
           </div>
 
           <div className="grid gap-4">
-            {queue.length === 0 && <p className="text-center text-slate-500 py-10 bg-slate-800/50 rounded-lg border border-slate-800">Belum ada antrian hari ini.</p>}
+            {queue.length === 0 && <p className="text-center text-slate-500 py-10">Belum ada antrian.</p>}
             {queue.map((item) => (
-              <div key={item.id} className={`relative bg-slate-800 p-5 rounded-lg border-l-4 shadow-lg transition-all hover:translate-x-1 ${
+              <div key={item.id} className={`relative bg-slate-800 p-5 rounded-lg border-l-4 shadow-lg transition ${
                 item.status === 'done' ? 'border-emerald-500 opacity-60' : 
                 item.status === 'processing' ? 'border-blue-500 bg-slate-800/80 ring-1 ring-blue-500/50' : 
                 item.status === 'pending' ? 'border-amber-500 opacity-80' : 'border-slate-500'
               }`}>
-                <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-6 items-start">
-                  <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 w-full sm:w-auto sm:min-w-[80px]">
+                <div className="flex justify-between gap-6 items-start">
+                  <div className="flex flex-col items-center justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 min-w-[80px]">
                     <span className="text-xs text-slate-500 uppercase">Nomor</span>
                     <span className="text-3xl font-bold text-white tracking-tighter">A-{String(item.no_antrian || 0).padStart(3, '0')}</span>
                   </div>
-                  <div className="flex-1 w-full">
-                    <h3 className="font-bold text-lg text-white flex items-center gap-2 flex-wrap">
-                      <span className="flex items-center gap-2"><User size={18} /> {item.costumer_name}</span>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-white flex items-center gap-2">
+                      <User size={18} /> {item.costumer_name}
                       <span className={`text-[10px] uppercase px-2 py-0.5 rounded font-bold ${
-                        item.status === 'processing' ? 'bg-blue-600 text-white animate-pulse' : 
+                        item.status === 'processing' ? 'bg-blue-600 text-white' : 
                         item.status === 'done' ? 'bg-emerald-600 text-white' : 
                         item.status === 'pending' ? 'bg-amber-600 text-white' : 'bg-slate-700 text-slate-300'
-                      }`}>
-                        {item.status === 'processing' ? 'DIKERJAKAN' : item.status === 'pending' ? 'PENDING (PART)' : item.status}
-                      </span>
+                      }`}>{item.status}</span>
                     </h3>
                     <p className="text-slate-400 mt-1 text-sm">{item.issue}</p>
                     <div className="mt-3 flex items-center gap-4 text-xs text-slate-500 bg-slate-900/30 p-2 rounded w-fit">
