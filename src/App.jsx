@@ -128,8 +128,11 @@ function UserPage({ onNavigate }) {
       if (GEMINI_API_KEY && GEMINI_API_KEY.length > 10) {
         try {
           const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-          // Gunakan model 1.5-flash yang lebih stabil
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+          // Gunakan model 1.5-flash yang lebih stabil DENGAN CONFIG JSON
+          const model = genAI.getGenerativeModel({ 
+            model: "gemini-2.5-flash",
+            generationConfig: { responseMimeType: "application/json" }
+          });
           
           const prompt = `
             Peran: Kamu adalah Kepala Mekanik Bengkel Motor yang Tegas.
@@ -147,7 +150,7 @@ function UserPage({ onNavigate }) {
           
           const result = await model.generateContent(prompt);
           const response = await result.response;
-          const text = response.text().replace(/```json|```/g, '').trim();
+          const text = response.text(); // Tidak perlu replace regex berlebihan karena sudah forced JSON
           const aiData = JSON.parse(text);
              
           if (aiData) {
