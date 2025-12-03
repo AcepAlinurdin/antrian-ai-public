@@ -34,7 +34,7 @@ const checkAndFillSlots = async () => {
       .from('Antrian')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'processing')
-      .gte('created_at', today); // Hanya cek yang processing HARI INI
+      .gte('created_at', today);
 
     if ((processingCount || 0) < MAX_MECHANICS) {
       const slotsAvailable = MAX_MECHANICS - (processingCount || 0);
@@ -42,7 +42,7 @@ const checkAndFillSlots = async () => {
         .from('Antrian')
         .select('*')
         .eq('status', 'waiting')
-        .gte('created_at', today) // Hanya ambil yang waiting HARI INI
+        .gte('created_at', today)
         .order('created_at', { ascending: true })
         .limit(slotsAvailable);
 
@@ -241,12 +241,12 @@ function UserPage({ onNavigate }) {
                 item.status === 'processing' ? 'border-blue-500 bg-slate-800/80 ring-1 ring-blue-500/50' : 
                 item.status === 'pending' ? 'border-amber-500 opacity-80' : 'border-slate-500'
               }`}>
-                <div className="flex justify-between gap-6 items-start">
-                  <div className="flex flex-col items-center justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 min-w-[80px]">
+                <div className="flex flex-col sm:flex-row justify-between gap-4 sm:gap-6 items-start">
+                  <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 w-full sm:w-auto sm:min-w-[80px]">
                     <span className="text-xs text-slate-500 uppercase">Nomor</span>
                     <span className="text-3xl font-bold text-white tracking-tighter">A-{String(item.no_antrian || 0).padStart(3, '0')}</span>
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 w-full">
                     <h3 className="font-bold text-lg text-white flex items-center gap-2 flex-wrap">
                       <span className="flex items-center gap-2"><User size={18} /> {item.costumer_name}</span>
                       <span className={`text-[10px] uppercase px-2 py-0.5 rounded font-bold ${
@@ -520,26 +520,26 @@ function AdminPage({ onNavigate }) {
   if (!session) return null;
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 font-mono">
+    <div className="min-h-screen bg-slate-900 text-slate-100 p-4 sm:p-6 font-mono">
       <div className="max-w-5xl mx-auto mb-8 flex flex-col sm:flex-row justify-between items-center border-b border-slate-700 pb-6 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold flex items-center gap-3 text-red-500"><Bot size={32} /> Admin Dashboard</h1>
+        <div className="text-center sm:text-left">
+          <h1 className="text-3xl font-bold flex items-center justify-center sm:justify-start gap-3 text-red-500"><Bot size={32} /> Admin Dashboard</h1>
           <p className="text-slate-500 text-sm mt-1">
              Hari ini: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         </div>
-        <div className="flex gap-4 flex-wrap justify-end">
+        <div className="flex gap-2 sm:gap-4 flex-wrap justify-center sm:justify-end w-full sm:w-auto">
             <button 
               onClick={() => onNavigate('recap')}
               className="px-4 py-2 bg-slate-800 text-cyan-400 hover:text-cyan-300 border border-slate-700 rounded-lg flex items-center gap-2 text-sm transition-colors"
             >
-              <FileText size={16}/> Lihat Rekap
+              <FileText size={16}/> <span className="hidden sm:inline">Lihat Rekap</span><span className="sm:hidden">Rekap</span>
             </button>
             <button 
               onClick={() => onNavigate('user')}
               className="px-4 py-2 text-slate-400 hover:text-white border border-slate-700 rounded-lg flex items-center gap-2 text-sm transition-colors"
             >
-              <ArrowLeft size={16}/> Ke Halaman User
+              <ArrowLeft size={16}/> <span className="hidden sm:inline">Ke Halaman User</span><span className="sm:hidden">User</span>
             </button>
             <button onClick={handleLogout} className="px-4 py-2 bg-red-900/30 text-red-400 hover:bg-red-900 border border-red-900 rounded-lg flex items-center gap-2 text-sm transition-colors">
               <LogOut size={16} /> Logout
@@ -566,12 +566,17 @@ function AdminPage({ onNavigate }) {
                 item.status === 'processing' ? 'border-blue-500 bg-slate-800/80 ring-1 ring-blue-500/50' : 
                 item.status === 'pending' ? 'border-amber-500 opacity-80' : 'border-slate-500'
               }`}>
-                <div className="flex justify-between gap-6 items-start">
-                  <div className="flex flex-col items-center justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 min-w-[80px]">
+                {/* Responsive Flex Container */}
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">
+                  
+                  {/* Number Box: Row on mobile, Col on desktop */}
+                  <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center bg-slate-900/50 p-3 rounded-lg border border-slate-700 w-full sm:w-auto sm:min-w-[80px]">
                     <span className="text-xs text-slate-500 uppercase">Nomor</span>
                     <span className="text-3xl font-bold text-white tracking-tighter">A-{String(item.no_antrian || 0).padStart(3, '0')}</span>
                   </div>
-                  <div className="flex-1">
+
+                  {/* Content */}
+                  <div className="flex-1 w-full">
                     <h3 className="font-bold text-lg text-white flex items-center gap-2">
                       <User size={18} /> {item.costumer_name}
                       <span className={`text-[10px] uppercase px-2 py-0.5 rounded font-bold ${
@@ -587,7 +592,8 @@ function AdminPage({ onNavigate }) {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2 pl-4 border-l border-slate-700 min-w-[140px]">
+                  {/* Actions: Full width on mobile, Side col on desktop */}
+                  <div className="flex flex-col gap-2 w-full sm:w-auto sm:pl-4 sm:border-l border-slate-700 sm:min-w-[140px] pt-4 sm:pt-0 border-t sm:border-t-0 border-slate-700">
                         {item.status === 'processing' && (
                           <>
                             <button onClick={() => handleAdminAction(item.id, 'done')} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded flex items-center justify-center gap-2 text-xs font-bold shadow-lg w-full transition-colors">
@@ -603,7 +609,6 @@ function AdminPage({ onNavigate }) {
                             <Play size={16}/> RESUME
                           </button>
                         )}
-                        {/* Tombol Hapus: Muncul untuk status WAITING dan DONE */}
                         {(item.status === 'waiting' || item.status === 'done') && (
                           <button onClick={() => deleteQueue(item.id)} className="bg-red-900/20 hover:bg-red-900 text-red-400 p-2 rounded flex justify-center w-full transition-colors" title="Hapus Data">
                             <Trash2 size={18}/>
