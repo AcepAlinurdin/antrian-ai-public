@@ -2,12 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Loader2, Bot, User, Clock, CheckCircle, PauseCircle, 
   Trash2, LogOut, Lock, Play, ArrowLeft, Wrench, LogIn, 
-  FileText, History, Package, Sparkles, Save, UploadCloud 
+  FileText, History, Package, Sparkles, Save, UploadCloud, Plus, X 
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 
 // ==========================================
-// 1. CONFIG & HELPERS
+// 1. CONFIG & GLOBAL VARIABLES
 // ==========================================
 
 const getEnv = (key) => {
@@ -17,18 +16,14 @@ const getEnv = (key) => {
 const SUPABASE_URL = getEnv('VITE_SUPABASE_URL') || '';
 const SUPABASE_KEY = getEnv('VITE_SUPABASE_KEY') || '';
 
-// Inisialisasi Supabase
+// Variabel Global untuk Supabase (diisi nanti setelah script load)
 let supabase = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
-  supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-}
 
 const MAX_MECHANICS = 2;
 
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-// Logika Auto-fill slot mekanik (Simulasi Backend Logic di Client)
 const checkAndFillSlots = async () => {
   if (!supabase) return;
   try {
@@ -157,18 +152,24 @@ const TicketCard = ({ item, isAdmin = false, onAction, onDelete }) => {
 // 3. PAGES
 // ==========================================
 
-// --- INVENTORY PAGE (NEW FEATURE) ---
+// --- INVENTORY PAGE ---
 const InventoryPage = ({ onNavigate }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  
+  // State untuk form manual
   const [formData, setFormData] = useState({
     nama_barang: '', kategori: '', harga_beli: 0, harga_jual: 0, stok: 0, supplier: ''
   });
 
+  // State untuk hasil scan nota (Array of items)
+  const [scannedItems, setScannedItems] = useState([]);
+
   useEffect(() => { if (supabase) fetchInventory(); }, []);
 
   const fetchInventory = async () => {
+    if (!supabase) return;
     const { data } = await supabase.from('Inventory').select('*').order('created_at', { ascending: false });
     if (data) setItems(data);
   };
@@ -178,27 +179,85 @@ const InventoryPage = ({ onNavigate }) => {
     if (!file) return;
 
     setAnalyzing(true);
-    // Simulasi Scan AI (Karena Backend tidak jalan di Preview)
+    
+    // SIMULASI: Dalam app nyata, ini kirim ke /api/analyze-invoice
+    // Kita simulasikan respon AI yang mendeteksi BANYAK barang dari nota AHASS
     setTimeout(() => {
-      setFormData({
-        nama_barang: 'Oli Motul 1L - Matic',
-        kategori: 'Oli',
-        harga_beli: 45000,
-        harga_jual: 60000,
-        stok: 24,
-        supplier: 'PT. Maju Jaya Motor'
-      });
-      alert("✨ [Simulasi] Gemini AI berhasil membaca foto faktur!\nData telah terisi otomatis.");
+      const mockDetectedItems = [
+        { nama_barang: 'BAN LUAR BELAKANG', kategori: 'Sparepart', harga_beli: 35000, harga_jual: 41000, stok: 1, supplier: 'AHASS Gunung Sahari' },
+        { nama_barang: 'ELEMENT COMP, AIR/C (17210K59A70)', kategori: 'Sparepart', harga_beli: 50000, harga_jual: 62000, stok: 1, supplier: 'AHASS Gunung Sahari' },
+        { nama_barang: 'PIECE SET, SLIDE (22011KWN900)', kategori: 'Sparepart', harga_beli: 18000, harga_jual: 22000, stok: 1, supplier: 'AHASS Gunung Sahari' },
+        { nama_barang: 'OIL SEAL 26X45X6 (91202KWN901)', kategori: 'Sparepart', harga_beli: 8000, harga_jual: 10500, stok: 1, supplier: 'AHASS Gunung Sahari' },
+        { nama_barang: 'ROLLER WEIGHT SET (2212AK36T00)', kategori: 'Sparepart', harga_beli: 42000, harga_jual: 51500, stok: 1, supplier: 'AHASS Gunung Sahari' },
+        { nama_barang: 'SPARK PLUG CPR9EA9 (NGK)', kategori: 'Sparepart', harga_beli: 15000, harga_jual: 21500, stok: 1, supplier: 'AHASS Gunung Sahari' }
+      ];
+      
+      setScannedItems(mockDetectedItems);
+      alert(`✨ Gemini AI berhasil mengekstrak ${mockDetectedItems.length} item dari nota!`);
       setAnalyzing(false);
-    }, 2000);
+    }, 2500);
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
+  const handleScannedItemChange = (index, field, value) => {
+    const updated = [...scannedItems];
+    updated[index] = { ...updated[index], [field]: value };
+    setScannedItems(updated);
+  };
+
+  const removeScannedItem = (index) => {
+    const updated = scannedItems.filter((_, i) => i !== index);
+    setScannedItems(updated);
+  };
+
+  const handleSaveScannedItems = async () => {
     if (!supabase) return alert("Koneksi Supabase belum disetup.");
     setLoading(true);
+
+    try {
+      let savedCount = 0;
+      let updatedCount = 0;
+
+      for (const item of scannedItems) {
+        // 1. Cek apakah barang sudah ada di DB (Case insensitive)
+        const { data: existingItem } = await supabase
+          .from('Inventory')
+          .select('id, stok')
+          .ilike('nama_barang', item.nama_barang)
+          .maybeSingle();
+
+        if (existingItem) {
+          // 2. Jika ADA: Update Stok (Stok Lama + Stok Baru)
+          const newStok = (existingItem.stok || 0) + parseInt(item.stok);
+          await supabase
+            .from('Inventory')
+            .update({ stok: newStok, harga_beli: item.harga_beli, supplier: item.supplier })
+            .eq('id', existingItem.id);
+          updatedCount++;
+        } else {
+          // 3. Jika TIDAK ADA: Insert Barang Baru
+          await supabase.from('Inventory').insert([item]);
+          savedCount++;
+        }
+      }
+
+      alert(`Proses Selesai!\n✅ ${savedCount} Barang Baru Ditambahkan\n🔄 ${updatedCount} Stok Barang Diupdate`);
+      setScannedItems([]); // Clear form
+      fetchInventory(); // Refresh table
+    } catch (err) {
+      console.error(err);
+      alert("Gagal menyimpan data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fungsi simpan manual (satu item)
+  const handleManualSave = async (e) => {
+    e.preventDefault();
+    if (!supabase) return;
+    setLoading(true);
     const { error } = await supabase.from('Inventory').insert([formData]);
-    if (error) alert("Gagal menyimpan: " + error.message);
+    if (error) alert("Error: " + error.message);
     else {
       fetchInventory();
       setFormData({ nama_barang: '', kategori: '', harga_beli: 0, harga_jual: 0, stok: 0, supplier: '' });
@@ -215,53 +274,115 @@ const InventoryPage = ({ onNavigate }) => {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 font-mono">
-      <PageHeader title="Manajemen Gudang" subtitle="Input barang manual atau Scan Faktur via AI" icon={Package} 
+      <PageHeader title="Manajemen Gudang" subtitle="Input barang manual atau Scan Nota via AI" icon={Package} 
         actions={<button onClick={() => onNavigate('admin')} className="px-4 py-2 text-slate-400 hover:text-white border border-slate-700 rounded-lg flex items-center gap-2 text-sm transition"><ArrowLeft size={16}/> Kembali</button>} />
       
       <div className="max-w-6xl mx-auto grid lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1">
-          <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 sticky top-6">
-            <div className="mb-6">
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-emerald-500/50 border-dashed rounded-lg cursor-pointer bg-slate-900/50 hover:bg-slate-900 transition relative overflow-hidden group">
+        
+        {/* KOLOM KIRI: FORM INPUT / SCAN HASIL */}
+        <div className="lg:col-span-1 space-y-6">
+          
+          {/* AREA UPLOAD GAMBAR */}
+          <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+            <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider">1. Scan Nota (Otomatis)</h3>
+            <div className="mb-2">
+                <label className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition relative overflow-hidden group ${analyzing ? 'border-emerald-500 bg-emerald-900/10' : 'border-slate-600 bg-slate-900/50 hover:bg-slate-900'}`}>
                     <div className="flex flex-col items-center justify-center pt-5 pb-6">
                         {analyzing ? <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mb-2" /> : <Sparkles className="w-8 h-8 text-emerald-500 mb-2 group-hover:scale-110 transition" />}
-                        <p className="text-xs text-slate-400 text-center px-4">{analyzing ? "Gemini sedang membaca foto..." : "Upload Foto Faktur / Barang (Auto-Input AI)"}</p>
+                        <p className="text-xs text-slate-400 text-center px-4">{analyzing ? "Gemini sedang membaca nota..." : "Klik untuk Upload Foto Nota"}</p>
                     </div>
                     <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} disabled={analyzing} />
                 </label>
             </div>
-            <h3 className="text-lg font-bold text-white mb-4 border-b border-slate-700 pb-2">Input / Edit Data</h3>
-            <form onSubmit={handleSave} className="space-y-3">
-                <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Nama Barang" value={formData.nama_barang} onChange={e => setFormData({...formData, nama_barang: e.target.value})} required />
-                <div className="grid grid-cols-2 gap-2">
-                    <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Kategori" value={formData.kategori} onChange={e => setFormData({...formData, kategori: e.target.value})} />
-                    <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Stok" value={formData.stok} onChange={e => setFormData({...formData, stok: e.target.value})} />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                    <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Harga Beli" value={formData.harga_beli} onChange={e => setFormData({...formData, harga_beli: e.target.value})} />
-                    <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Harga Jual" value={formData.harga_jual} onChange={e => setFormData({...formData, harga_jual: e.target.value})} />
-                </div>
-                <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="Supplier" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} />
-                <button disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded flex justify-center items-center gap-2 mt-4">{loading ? <Loader2 className="animate-spin size={18}" /> : <><Save size={18}/> Simpan Barang</>}</button>
-            </form>
           </div>
+
+          {/* JIKA ADA HASIL SCAN: TAMPILKAN LIST EDITOR */}
+          {scannedItems.length > 0 ? (
+             <div className="bg-slate-800 p-4 rounded-xl border border-emerald-500/50 shadow-lg shadow-emerald-900/20 max-h-[600px] overflow-y-auto custom-scrollbar">
+                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                  <h3 className="text-md font-bold text-white text-emerald-400">Hasil Scan ({scannedItems.length})</h3>
+                  <button onClick={() => setScannedItems([])} className="text-xs text-red-400 hover:underline">Batal</button>
+                </div>
+                
+                <div className="space-y-4">
+                  {scannedItems.map((item, idx) => (
+                    <div key={idx} className="bg-slate-900/80 p-3 rounded border border-slate-700 relative group">
+                      <button onClick={() => removeScannedItem(idx)} className="absolute top-2 right-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"><X size={14}/></button>
+                      
+                      <div className="space-y-2">
+                        <input type="text" className="w-full bg-transparent border-b border-slate-700 text-sm font-bold text-white focus:border-emerald-500 outline-none pb-1" 
+                          value={item.nama_barang} onChange={e => handleScannedItemChange(idx, 'nama_barang', e.target.value)} placeholder="Nama Barang" />
+                        
+                        <div className="flex gap-2">
+                           <input type="number" className="w-1/3 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
+                             value={item.stok} onChange={e => handleScannedItemChange(idx, 'stok', e.target.value)} placeholder="Qty" title="Stok Masuk" />
+                           <input type="text" className="w-2/3 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
+                             value={item.kategori} onChange={e => handleScannedItemChange(idx, 'kategori', e.target.value)} placeholder="Kategori" />
+                        </div>
+                        <div className="flex gap-2">
+                           <input type="number" className="w-1/2 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
+                             value={item.harga_beli} onChange={e => handleScannedItemChange(idx, 'harga_beli', e.target.value)} placeholder="H. Beli" />
+                           <input type="number" className="w-1/2 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
+                             value={item.harga_jual} onChange={e => handleScannedItemChange(idx, 'harga_jual', e.target.value)} placeholder="H. Jual" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={handleSaveScannedItems} disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded flex justify-center items-center gap-2 mt-4 sticky bottom-0 shadow-lg">
+                    {loading ? <Loader2 className="animate-spin size={18}" /> : <><Save size={18}/> Simpan Semua ke Gudang</>}
+                </button>
+             </div>
+          ) : (
+            /* JIKA TIDAK ADA HASIL SCAN: TAMPILKAN FORM MANUAL */
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider">2. Input Manual</h3>
+                <form onSubmit={handleManualSave} className="space-y-3">
+                    <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Nama Barang" value={formData.nama_barang} onChange={e => setFormData({...formData, nama_barang: e.target.value})} required />
+                    <div className="grid grid-cols-2 gap-2">
+                        <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Kategori" value={formData.kategori} onChange={e => setFormData({...formData, kategori: e.target.value})} />
+                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Stok" value={formData.stok} onChange={e => setFormData({...formData, stok: e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Harga Beli" value={formData.harga_beli} onChange={e => setFormData({...formData, harga_beli: e.target.value})} />
+                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Harga Jual" value={formData.harga_jual} onChange={e => setFormData({...formData, harga_jual: e.target.value})} />
+                    </div>
+                    <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Supplier" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} />
+                    <button disabled={loading} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded flex justify-center items-center gap-2 mt-2 text-sm">{loading ? <Loader2 className="animate-spin size={16}" /> : <><Plus size={16}/> Tambah Manual</>}</button>
+                </form>
+            </div>
+          )}
         </div>
+
+        {/* KOLOM KANAN: TABEL GUDANG */}
         <div className="lg:col-span-2">
-          <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
-             <table className="w-full text-sm text-left text-slate-400">
-                <thead className="text-xs text-slate-200 uppercase bg-slate-900/50"><tr><th className="px-6 py-3">Barang</th><th className="px-6 py-3">Stok</th><th className="px-6 py-3">Jual</th><th className="px-6 py-3 text-right">Aksi</th></tr></thead>
-                <tbody>
-                    {items.length === 0 && <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500">Gudang kosong.</td></tr>}
-                    {items.map((item) => (
-                        <tr key={item.id} className="border-b border-slate-700 hover:bg-slate-700/50">
-                            <td className="px-6 py-4 font-medium text-white">{item.nama_barang} <br/><span className="text-[10px] bg-slate-700 px-1 rounded">{item.kategori}</span></td>
-                            <td className={`px-6 py-4 font-bold ${item.stok < 5 ? 'text-red-400' : 'text-emerald-400'}`}>{item.stok}</td>
-                            <td className="px-6 py-4">Rp {parseInt(item.harga_jual).toLocaleString('id-ID')}</td>
-                            <td className="px-6 py-4 text-right"><button onClick={() => handleDelete(item.id)} className="text-red-400 hover:text-red-300"><Trash2 size={16}/></button></td>
-                        </tr>
-                    ))}
-                </tbody>
-             </table>
+          <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden h-full flex flex-col">
+             <div className="p-4 border-b border-slate-700 bg-slate-900/50">
+                <h3 className="font-bold text-lg text-white">Stok Gudang</h3>
+             </div>
+             <div className="overflow-y-auto flex-1">
+                <table className="w-full text-sm text-left text-slate-400">
+                    <thead className="text-xs text-slate-200 uppercase bg-slate-900/50 sticky top-0"><tr><th className="px-6 py-3">Barang</th><th className="px-6 py-3 text-center">Stok</th><th className="px-6 py-3 text-right">Harga Jual</th><th className="px-6 py-3 text-right">Aksi</th></tr></thead>
+                    <tbody>
+                        {items.length === 0 && <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500">Gudang kosong.</td></tr>}
+                        {items.map((item) => (
+                            <tr key={item.id} className="border-b border-slate-700 hover:bg-slate-700/50 transition">
+                                <td className="px-6 py-4">
+                                    <div className="font-medium text-white">{item.nama_barang}</div>
+                                    <div className="text-xs mt-1 flex gap-2">
+                                        <span className="bg-slate-700 px-2 py-0.5 rounded text-slate-300">{item.kategori || 'Umum'}</span>
+                                        {item.supplier && <span className="text-slate-500 flex items-center gap-1">🏠 {item.supplier}</span>}
+                                    </div>
+                                </td>
+                                <td className={`px-6 py-4 font-bold text-center text-lg ${item.stok < 5 ? 'text-red-400 bg-red-900/10 rounded' : 'text-emerald-400'}`}>{item.stok}</td>
+                                <td className="px-6 py-4 text-right font-mono text-white">Rp {parseInt(item.harga_jual).toLocaleString('id-ID')}</td>
+                                <td className="px-6 py-4 text-right"><button onClick={() => handleDelete(item.id)} className="text-red-400 hover:text-red-300 bg-red-900/20 p-2 rounded hover:bg-red-900/40 transition"><Trash2 size={16}/></button></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+             </div>
           </div>
         </div>
       </div>
@@ -440,14 +561,39 @@ const LoginPage = ({ onNavigate }) => {
 
 export default function App() {
   const [currentView, setCurrentView] = useState('user');
+  const [isSupabaseReady, setIsSupabaseReady] = useState(false);
 
-  // Supabase Check
+  useEffect(() => {
+    // Inject Script Supabase untuk Environment ini
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.46.1/dist/umd/supabase.min.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.supabase && SUPABASE_URL && SUPABASE_KEY) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      }
+      setIsSupabaseReady(true);
+    };
+    script.onerror = () => setIsSupabaseReady(true); // Lanjut render untuk nampilin error UI
+    document.body.appendChild(script);
+  }, []);
+
+  if (!isSupabaseReady) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white gap-4 font-mono">
+        <Loader2 className="animate-spin" size={48} />
+        <p className="animate-pulse">Menghubungkan ke System...</p>
+      </div>
+    );
+  }
+
+  // UI Error jika Config kosong
   if (!supabase) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center font-mono">
         <div className="max-w-md border border-red-500 bg-red-900/20 p-6 rounded-lg">
           <h2 className="text-xl font-bold text-red-400 mb-2">Konfigurasi Hilang</h2>
-          <p className="text-sm text-slate-300">Environment Variables tidak ditemukan.</p>
+          <p className="text-sm text-slate-300">Harap isi VITE_SUPABASE_URL dan VITE_SUPABASE_KEY.</p>
         </div>
       </div>
     );

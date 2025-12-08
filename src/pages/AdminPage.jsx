@@ -57,6 +57,9 @@ export default function AdminPage({ onNavigate }) {
         icon={Bot}
         actions={
           <>
+          <button onClick={() => onNavigate('inventory')} className="px-4 py-2 bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900 border border-emerald-900 rounded-lg flex items-center gap-2 text-sm transition">
+      <Package size={16}/> Gudang & Stok
+    </button>
             <button onClick={() => onNavigate('recap')} className="px-4 py-2 bg-slate-800 hover:text-cyan-300 border border-slate-700 rounded-lg flex items-center gap-2 text-sm transition">
               <FileText size={16}/> <span className="hidden sm:inline">Rekap</span>
             </button>
