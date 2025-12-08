@@ -181,22 +181,72 @@ const InventoryPage = ({ onNavigate }) => {
 
     setAnalyzing(true);
     
-    // SIMULASI: Dalam app nyata, ini kirim ke /api/analyze-invoice
-    // Kita simulasikan respon AI yang mendeteksi BANYAK barang dari nota AHASS
-    setTimeout(() => {
-      const mockDetectedItems = [
-        { nama_barang: 'BAN LUAR BELAKANG', kategori: 'Sparepart', harga_beli: 35000, harga_jual: 41000, stok: 1, supplier: 'AHASS Gunung Sahari' },
-        { nama_barang: 'ELEMENT COMP, AIR/C (17210K59A70)', kategori: 'Sparepart', harga_beli: 50000, harga_jual: 62000, stok: 1, supplier: 'AHASS Gunung Sahari' },
-        { nama_barang: 'PIECE SET, SLIDE (22011KWN900)', kategori: 'Sparepart', harga_beli: 18000, harga_jual: 22000, stok: 1, supplier: 'AHASS Gunung Sahari' },
-        { nama_barang: 'OIL SEAL 26X45X6 (91202KWN901)', kategori: 'Sparepart', harga_beli: 8000, harga_jual: 10500, stok: 1, supplier: 'AHASS Gunung Sahari' },
-        { nama_barang: 'ROLLER WEIGHT SET (2212AK36T00)', kategori: 'Sparepart', harga_beli: 42000, harga_jual: 51500, stok: 1, supplier: 'AHASS Gunung Sahari' },
-        { nama_barang: 'SPARK PLUG CPR9EA9 (NGK)', kategori: 'Sparepart', harga_beli: 15000, harga_jual: 21500, stok: 1, supplier: 'AHASS Gunung Sahari' }
-      ];
-      
-      setScannedItems(mockDetectedItems);
-      alert(`✨ Gemini AI berhasil mengekstrak ${mockDetectedItems.length} item dari nota!`);
-      setAnalyzing(false);
-    }, 2500);
+    // 1. Convert File ke Base64 agar bisa dikirim ke API
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      const base64String = reader.result.split(',')[1];
+      const mimeType = file.type;
+
+      try {
+        // 2. REAL API CALL (Tanpa Dummy)
+        // Pastikan Anda sudah membuat file api/analyze-image.js (atau namanya sesuaikan)
+        const response = await fetch('/api/analyze-image', { // Asumsikan endpointnya ini
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: base64String, mimeType }),
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Gagal terhubung ke API AI');
+        }
+
+        const aiData = await response.json();
+        
+        let newScannedItems = [];
+
+        // Logika untuk menangani output backend Anda
+        // Backend Anda saat ini mengembalikan Single Object: { nama_barang, stok, ... }
+        if (aiData.nama_barang) {
+            newScannedItems.push({
+                nama_barang: aiData.nama_barang,
+                kategori: aiData.kategori || 'Sparepart',
+                harga_beli: aiData.harga_beli || 0,
+                // Backend Anda pakai key "harga_jual_estimasi", kita map ke "harga_jual"
+                harga_jual: aiData.harga_jual_estimasi || 0, 
+                stok: aiData.stok || 1,
+                supplier: aiData.supplier || ''
+            });
+        } 
+        // Jaga-jaga jika nanti backend diupdate support array "items"
+        else if (aiData.items && Array.isArray(aiData.items)) {
+            newScannedItems = aiData.items.map(i => ({
+                nama_barang: i.nama_barang,
+                kategori: i.kategori || 'Sparepart',
+                harga_beli: i.harga_beli || 0,
+                harga_jual: i.harga_jual || 0,
+                stok: i.stok || i.qty || 1,
+                supplier: aiData.supplier || ''
+            }));
+        }
+
+        if (newScannedItems.length > 0) {
+            setScannedItems(newScannedItems);
+            alert(`✨ Gemini AI berhasil mengekstrak data! Silakan cek di form.`);
+        } else {
+            alert("AI tidak menemukan data barang yang valid dari gambar tersebut.");
+        }
+
+      } catch (err) {
+        console.error("AI Error:", err);
+        alert(`Gagal memproses gambar: ${err.message}. \n(Pastikan server backend jalan dengan 'vercel dev')`);
+      } finally {
+        setAnalyzing(false);
+        // Reset input file agar bisa upload file yang sama lagi jika mau
+        e.target.value = null;
+      }
+    };
   };
 
   const handleScannedItemChange = (index, field, value) => {
