@@ -4,6 +4,7 @@ import {
   Trash2, LogOut, Lock, Play, ArrowLeft, Wrench, LogIn, 
   FileText, History, Package, Sparkles, Save, UploadCloud, Plus, X 
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 
 // ==========================================
 // 1. CONFIG & GLOBAL VARIABLES
@@ -309,21 +310,45 @@ const InventoryPage = ({ onNavigate }) => {
                     <div key={idx} className="bg-slate-900/80 p-3 rounded border border-slate-700 relative group">
                       <button onClick={() => removeScannedItem(idx)} className="absolute top-2 right-2 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition"><X size={14}/></button>
                       
-                      <div className="space-y-2">
-                        <input type="text" className="w-full bg-transparent border-b border-slate-700 text-sm font-bold text-white focus:border-emerald-500 outline-none pb-1" 
-                          value={item.nama_barang} onChange={e => handleScannedItemChange(idx, 'nama_barang', e.target.value)} placeholder="Nama Barang" />
-                        
-                        <div className="flex gap-2">
-                           <input type="number" className="w-1/3 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
-                             value={item.stok} onChange={e => handleScannedItemChange(idx, 'stok', e.target.value)} placeholder="Qty" title="Stok Masuk" />
-                           <input type="text" className="w-2/3 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
-                             value={item.kategori} onChange={e => handleScannedItemChange(idx, 'kategori', e.target.value)} placeholder="Kategori" />
+                      <div className="space-y-3">
+                        {/* Nama Barang */}
+                        <div>
+                          <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Nama Barang</label>
+                          <input type="text" className="w-full bg-transparent border-b border-slate-700 text-sm font-bold text-white focus:border-emerald-500 outline-none pb-1" 
+                            value={item.nama_barang} onChange={e => handleScannedItemChange(idx, 'nama_barang', e.target.value)} />
                         </div>
-                        <div className="flex gap-2">
-                           <input type="number" className="w-1/2 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
-                             value={item.harga_beli} onChange={e => handleScannedItemChange(idx, 'harga_beli', e.target.value)} placeholder="H. Beli" />
-                           <input type="number" className="w-1/2 bg-slate-800 rounded px-2 py-1 text-xs text-white" 
-                             value={item.harga_jual} onChange={e => handleScannedItemChange(idx, 'harga_jual', e.target.value)} placeholder="H. Jual" />
+                        
+                        <div className="flex gap-3">
+                           <div className="w-1/3">
+                             <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Qty</label>
+                             <input type="number" className="w-full bg-slate-800 rounded px-2 py-1 text-xs text-white border border-slate-600" 
+                               value={item.stok} onChange={e => handleScannedItemChange(idx, 'stok', e.target.value)} />
+                           </div>
+                           <div className="w-2/3">
+                             <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Kategori</label>
+                             <input type="text" className="w-full bg-slate-800 rounded px-2 py-1 text-xs text-white border border-slate-600" 
+                               value={item.kategori} onChange={e => handleScannedItemChange(idx, 'kategori', e.target.value)} />
+                           </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                           <div className="w-1/2">
+                             <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Harga Beli</label>
+                             <input type="number" className="w-full bg-slate-800 rounded px-2 py-1 text-xs text-white border border-slate-600" 
+                               value={item.harga_beli} onChange={e => handleScannedItemChange(idx, 'harga_beli', e.target.value)} />
+                           </div>
+                           <div className="w-1/2">
+                             <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Harga Jual</label>
+                             <input type="number" className="w-full bg-slate-800 rounded px-2 py-1 text-xs text-white border border-slate-600" 
+                               value={item.harga_jual} onChange={e => handleScannedItemChange(idx, 'harga_jual', e.target.value)} />
+                           </div>
+                        </div>
+
+                        {/* Supplier */}
+                        <div>
+                          <label className="text-[10px] uppercase text-slate-500 font-bold mb-1 block">Supplier</label>
+                          <input type="text" className="w-full bg-slate-800 rounded px-2 py-1 text-xs text-white border border-slate-600" 
+                            value={item.supplier} onChange={e => handleScannedItemChange(idx, 'supplier', e.target.value)} />
                         </div>
                       </div>
                     </div>
@@ -339,16 +364,34 @@ const InventoryPage = ({ onNavigate }) => {
             <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
                 <h3 className="text-sm font-bold text-slate-400 mb-3 uppercase tracking-wider">2. Input Manual</h3>
                 <form onSubmit={handleManualSave} className="space-y-3">
-                    <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Nama Barang" value={formData.nama_barang} onChange={e => setFormData({...formData, nama_barang: e.target.value})} required />
-                    <div className="grid grid-cols-2 gap-2">
-                        <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Kategori" value={formData.kategori} onChange={e => setFormData({...formData, kategori: e.target.value})} />
-                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Stok" value={formData.stok} onChange={e => setFormData({...formData, stok: e.target.value})} />
+                    <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Nama Barang</label>
+                        <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.nama_barang} onChange={e => setFormData({...formData, nama_barang: e.target.value})} required />
                     </div>
                     <div className="grid grid-cols-2 gap-2">
-                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Harga Beli" value={formData.harga_beli} onChange={e => setFormData({...formData, harga_beli: e.target.value})} />
-                        <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Harga Jual" value={formData.harga_jual} onChange={e => setFormData({...formData, harga_jual: e.target.value})} />
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Kategori</label>
+                            <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.kategori} onChange={e => setFormData({...formData, kategori: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Stok (Qty)</label>
+                            <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.stok} onChange={e => setFormData({...formData, stok: e.target.value})} />
+                        </div>
                     </div>
-                    <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" placeholder="Supplier" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} />
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Harga Beli</label>
+                            <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.harga_beli} onChange={e => setFormData({...formData, harga_beli: e.target.value})} />
+                        </div>
+                        <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Harga Jual</label>
+                            <input type="number" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.harga_jual} onChange={e => setFormData({...formData, harga_jual: e.target.value})} />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Supplier</label>
+                        <input type="text" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} />
+                    </div>
                     <button disabled={loading} className="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded flex justify-center items-center gap-2 mt-2 text-sm">{loading ? <Loader2 className="animate-spin size={16}" /> : <><Plus size={16}/> Tambah Manual</>}</button>
                 </form>
             </div>
